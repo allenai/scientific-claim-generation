@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="f760b1f2-5033-4a9b-a526-5bd51a32c71a" name="ai2-server" url="http://s2-server3.corp.ai2">
+        <fileTransfer host="s2-server3.corp.ai2" port="22" privateKey="$USER_HOME$/.ssh/id_rsa" rootFolder="/home/dustinw" accessType="SFTP" keyPair="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+      <webServer id="2a326a20-b333-4e13-9aca-e14ac927791c" name="ai2-aws-small" url="http://10.12.45.213">
+        <fileTransfer host="10.12.45.213" port="22" privateKey="$USER_HOME$/.ssh/id_rsa" rootFolder="/home/dustinw" accessType="SFTP" keyPair="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

@@ -1,0 +1,31 @@
+name: claim-generation-test
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - cudatoolkit=10.1.243=h6bb024c_0
+  - matplotlib=3.3.4=py37h06a4308_0
+  - numpy=1.20.2=py37h2d18471_0
+  - pandas=1.2.4=py37h2531618_0
+  - pip=21.1.1=py37h06a4308_0
+  - pytorch=1.7.1=py3.7_cuda10.1.243_cudnn7.6.3_0
+  - scikit-learn=0.24.2=py37ha9443f7_0
+  - scipy=1.6.2=py37had2a1c9_1
+  - seaborn=0.11.1=pyhd3eb1b0_0
+  - torchaudio=0.7.2=py37
+  - torchvision=0.8.2=py37_cu101
+  - pip:
+    - ipdb==0.13.9
+    - ipython==7.24.1
+    - jsonlines==2.0.0
+    - krippendorff==0.4.0
+    - nltk==3.6.2
+    - rouge-score==0.0.4
+    - scispacy==0.4.0
+    - spacy==3.0.0
+    - tokenizers==0.10.3
+    - tqdm==4.49.0
+    - transformers==4.5.1
+    - wandb==0.10.31
+    - yake==0.4.8

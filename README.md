@@ -138,4 +138,22 @@ claim-generation-data/output/{method}/{0-5}
   | sorted_fc_claims.jsonl: Claims ranked by their score s in their original json format
 ```
 
+To then sample a set of citances and combine/shuffle claims and prepare a set of sheets for annotation, run the following:
+
+```
+python dataset_tools/combine_claims_and_sample_data_for_annotation.py \
+  --claims_files claim-generation-data/output/supervised_cl_5_rounds/0/output_test_claims.jsonl claim-generation-data/output/supervised_cl_5_rounds/1/output_test_claims.jsonl ... \
+  --shared_size 10 \
+  --set_sizes 30 30 30 \
+  --annotator_names ann_0 ann_1 ann_2 \
+  --outupt_dir claim-generation-data/output/annotations
+```
+
+This will combine all of the claims for each citance provided by the list of claim files and randomly sample 30 citances for 3 annotators, as well as 10 citances for all 3 to annotate for calculating IAA (so 100 citances total). After the annotation sheets have been filled out, calculate IAA and get evaluation metrics by running the following:
+
+```
+python dataset_tools/get_annotator_agreement_and_evaluate.py --annotation_files claim-generation-data/output/annotations/ann_0.csv claim-generation-data/output/annotations/ann_1.csv claim-generation-data/output/annotations/ann_2.csv
+  
+```
+
 ## Initial results

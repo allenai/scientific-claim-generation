@@ -1,0 +1,3 @@
+[submodule "ParagraphJointModel"]
+	path = ParagraphJointModel
+	url = git@github.com:dwright37/ParagraphJointModel.git

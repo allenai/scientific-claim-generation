@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Union
 from tqdm import tqdm
 import json
+from pathlib import Path
 
 
 from datasets import load_dataset, load_metric
@@ -65,77 +66,6 @@ class DataAndModelArguments:
     )
 
 
-@dataclass
-class DataCollatorForSeq2SeqMinPadding:
-    """
-    Data collator that will dynamically pad the inputs received, as well as the labels.
-
-    Args:
-        tokenizer (:class:`~transformers.PreTrainedTokenizer` or :class:`~transformers.PreTrainedTokenizerFast`):
-            The tokenizer used for encoding the data.
-        model (:class:`~transformers.PreTrainedModel`):
-            The model that is being trained. If set and has the `prepare_decoder_input_ids_from_labels`, use it to
-            prepare the `decoder_input_ids`
-
-            This is useful when using `label_smoothing` to avoid calculating loss twice.
-        padding (:obj:`bool`, :obj:`str` or :class:`~transformers.file_utils.PaddingStrategy`, `optional`, defaults to :obj:`True`):
-            Select a strategy to pad the returned sequences (according to the model's padding side and padding index)
-            among:
-
-            * :obj:`True` or :obj:`'longest'`: Pad to the longest sequence in the batch (or no padding if only a single
-              sequence is provided).
-            * :obj:`'max_length'`: Pad to a maximum length specified with the argument :obj:`max_length` or to the
-              maximum acceptable input length for the model if that argument is not provided.
-            * :obj:`False` or :obj:`'do_not_pad'` (default): No padding (i.e., can output a batch with sequences of
-              different lengths).
-        max_length (:obj:`int`, `optional`):
-            Maximum length of the returned list and optionally padding length (see above).
-        pad_to_multiple_of (:obj:`int`, `optional`):
-            If set will pad the sequence to a multiple of the provided value.
-
-            This is especially useful to enable the use of Tensor Cores on NVIDIA hardware with compute capability >=
-            7.5 (Volta).
-        label_pad_token_id (:obj:`int`, `optional`, defaults to -100):
-            The id to use when padding the labels (-100 will be automatically ignored by PyTorch loss functions).
-    """
-
-    tokenizer: PreTrainedTokenizerBase
-    model: Optional[PreTrainedModel] = None
-    padding: Union[bool, str, PaddingStrategy] = True
-    max_length: Optional[int] = None
-    pad_to_multiple_of: Optional[int] = None
-    label_pad_token_id: int = -100
-
-    def __call__(self, features):
-        labels = [feature["labels"] for feature in features] if "labels" in features[0].keys() else None
-        # We have to pad the labels before calling `tokenizer.pad` as this method won't pad them and needs them of the
-        # same length to return tensors.
-        if labels is not None:
-            max_label_length = max(len(l) for l in labels)
-            padding_side = self.tokenizer.padding_side
-            for feature in features:
-                remainder = [self.label_pad_token_id] * (max_label_length - len(feature["labels"]))
-                feature["labels"] = (
-                    feature["labels"] + remainder if padding_side == "right" else remainder + feature["labels"]
-                )
-
-        max_length = max(len(feature['input_ids']) for feature in features)
-        features = self.tokenizer.pad(
-            features,
-            padding=self.padding,
-            max_length=max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors="pt",
-        )
-
-        # prepare decoder_input_ids
-        if self.model is not None and hasattr(self.model, "prepare_decoder_input_ids_from_labels"):
-            decoder_input_ids = self.model.prepare_decoder_input_ids_from_labels(labels=features["labels"])
-            features["decoder_input_ids"] = decoder_input_ids
-
-        return features
-
-
 def enforce_reproducibility(seed=1000):
     # Sets seed manually for both CPU and CUDA
     torch.manual_seed(seed)
@@ -154,10 +84,11 @@ def enforce_reproducibility(seed=1000):
 
 def data_preprocess(tokenizer, dset, examples):
     if dset == 'citeworth':
-        inputs = [ctx + ' ' + ans[0]['text'] for ctx, ans in zip(examples['context'], examples['answers'])]
+        inputs = [ctx + ' ' + ans['text'] for ctx, ans in zip(examples['generated_question'], examples['answer'])]
+        targets = [''] * len(inputs)
     else:
-        inputs = [ctx + ' ' + ans['text'][0] for ctx, ans in zip(examples['context'], examples['answers'])]
-    targets = [q for i,q in enumerate(examples['question'])]
+        inputs = [q + ' ' + a for q,a in zip(examples['question'], examples['answer'])]
+        targets = [a for a in examples['turker_answer']]
     model_inputs = tokenizer(inputs, max_length=tokenizer.model_max_length, truncation=True)
 
     # Setup the tokenizer for targets
@@ -270,25 +201,37 @@ if __name__ == '__main__':
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
 
+    def qa2d_filter(example):
+        return example['dataset'] == 'SQuAD' \
+               and example['question'] != None \
+               and example['answer'] != None \
+               and example['turker_answer'] != None
+
     train_dset = None
     if training_args.do_train:
         # Create dataset and processor
         preprocessor = partial(data_preprocess, tokenizer, train_dset_name)
-        train_dset_base = load_dataset(train_dset_name, split='train')
-        train_dset = train_dset_base.map(preprocessor, batched=True)
+        if 'bioasq' in train_dset_name:
+            train_dset_base = load_dataset('json', data_files=[train_dset_name])
+        else:
+            train_dset_base = load_dataset('csv', data_files=[train_dset_name], delimiter='\t')
+            train_dset_base = train_dset_base.filter(qa2d_filter)
+        train_dset = train_dset_base.map(preprocessor, batched=True)['train']
 
     val_dset = None
     if training_args.do_eval:
         preprocessor = partial(data_preprocess, tokenizer, val_dset_name)
-        val_dset_base = load_dataset(val_dset_name, split='validation')
-        val_dset = val_dset_base.map(preprocessor, batched=True)
+        if 'bioasq' in val_dset_name:
+            val_dset_base = load_dataset('json', data_files=[val_dset_name])
+        else:
+            val_dset_base = load_dataset('csv', data_files=[val_dset_name], delimiter='\t')
+            val_dset_base = val_dset_base.filter(qa2d_filter)
+        val_dset = val_dset_base.map(preprocessor, batched=True)['train']
 
     pred_dset = None
     if training_args.do_predict:
         preprocessor = partial(data_preprocess, tokenizer, 'citeworth')
         gen_dset_base = load_dataset('json', data_files=gen_dset_name)
-        # Filter missing NER
-        gen_dset_base = gen_dset_base.filter(lambda example: len(example['answers']) > 0)
         gen_dset = gen_dset_base.map(preprocessor, batched=True)['train']
 
     metric = load_metric('rouge')
@@ -343,8 +286,8 @@ if __name__ == '__main__':
             all_samples.extend(list(samples.detach().cpu().numpy()))
         print([tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=False) for g in all_samples])
         with open(dm_args.output_predictions, 'wt') as f:
-            for con,ans,q in zip(gen_dset['context'], gen_dset['answers'], all_samples):
-                gen_question = tokenizer.decode(q, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                f.write(json.dumps({'context': con, 'answer': ans[0], 'generated_question': gen_question}))
+            for id,con,ans,q,claim,citance,paper_id,evidence in zip(gen_dset['id'], gen_dset['context'], gen_dset['answer'], gen_dset['generated_question'], all_samples, gen_dset['citance'], gen_dset['paper_id'], gen_dset['evidence']):
+                gen_claim = tokenizer.decode(claim, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                f.write(json.dumps({'id': id, 'paper_id': paper_id, 'context': con, 'citance': citance, 'answer': ans, 'generated_question': q, 'generated_claim': gen_claim, 'evidence': evidence}) + '\n')
 
 

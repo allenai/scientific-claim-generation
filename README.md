@@ -21,6 +21,26 @@ In this case, the context consists of the surounding two sentences from the orig
 ### Curriculum learning
 We attempted to improve over the base models by using curriculum learning. We gradually introduce more data to either re-train the NER module (in the zero-shot case) or BART (in the supervised case) by selecting claims which are easily verifiable by an external pre-trained fact checking model. We use the [ParagraphJointModel](https://arxiv.org/abs/2012.14500) pre-trained on FEVER and SciFact to rank claims. Generated claims are paired with the abstracts of the documents which their original citances reference, which gives a set of probabilities $P = {p_0,...,p_N}$ for each generated claim. The score for a given claim is then $s = max_{i}(p_i[SUPPORT] - p_i[CONTRADICT])$. We then rank all claims using this score and select all claims where $s > 0.5$ to re-train the model. For the supervised setting this is straight-forward (pair the claim with the original citance). In the NER case, we take the *entity* from the accepted claims, pair them with their original citances, and re-train an NER model starting from the scispacy `en_core_sci_md` model, which is trained on MedMentions.
 
+
+### Claim variants
+#### SUPPORT
+`SUPPORT` claims are created by pairing a generated claim as-is with the abstracts of documents that are cited in the original citance. Since rationales are not labeled in this setup, one should train a model such as LongChecker using these claims (which can perform inference using the entire abstract).
+
+#### CONTRADICT
+`CONTRADICT` claims are generated as follows:
+
+- Extract named entities from the original claim and link these to UMLS concepts. Each named entity will be linked to a concept $c_i$
+- Get all concepts which belong to the same semantic type and the same relation type. For a concept $c_i$ this yields a set ${r_0^i ... r_K^i} \in R_i$
+- Rank all of these concepts by measuring the cosine distance to the original concept using cui2vec vectors ($s_k^i = cosdist(r_k^i, c_i)$)
+- Sample the top N concepts from these concepts
+- For each concept $r_k^i$, replace the selected named entitiy with either the canonical name or an alias for $r_k^i$ listed in UMLS and select the name which produces the sentence with minimum perplexity using GPT2
+- Select as the negation the sentence which produces the strongest contradiction with the original claim as measured by an external NLI model
+
+Negative claims are also paired with the abstract of documents cited in the original citance.
+
+### NOT ENOUGH INFO
+`NOT ENOUGH INFO` claims are created by selecting either the original claim or negation and pairing this claim with the abstract of the document where the citance came from.
+
 ## Setup
 The best way to set up the environment is through [anaconda](https://www.anaconda.com/products/individual). First, install anaconda. Then run the following:
 

@@ -77,6 +77,10 @@ wget https://scifact.s3-us-west-2.amazonaws.com/release/latest/claims_with_citan
 
 4. Download the checkpoint for the ParagraphJointModel [here](https://drive.google.com/file/d/1hMrQzFe1EaJpCN9s3pF27Wu3amBbekiI/view?usp=sharing) and place it under claim-generation-data/models
 
+5. Download UMLS either [here](https://www.nlm.nih.gov/research/umls/licensedcontent/umlsknowledgesources.html) or by asking Lucy. You only need the MRCONSO file.
+
+6. Download cui2vec vectors [here](https://figshare.com/s/00d69861786cd0156d81)
+
 ## Running the code
 To format the SciFact citances to be used as training data for claim generation, run the following (assuming SciFact data is located under `scifact/data`):
 
@@ -98,7 +102,7 @@ python dataset_tools/create_train_test_splits_from_citances.py \
   --output_dir claim-generation-data/new_sampled_citances
 ```
 
-To run curriculum learning for the zero-shot method, execute the following:
+Before running either curriculum learning method, edit the paths in `generate_claim_variants.py` at lines 31 and 39 to point to where you downloaded the UMLS MRCONSO file and cui2vec vectors. Then, to run curriculum learning for the zero-shot method, execute the following:
 
 ```
 python curriculum_learning_ner_pipeline.py \

@@ -181,3 +181,37 @@ python dataset_tools/get_annotator_agreement_and_evaluate.py --annotation_files 
 ```
 
 ## Initial results
+
+CSVs with human annotations for the implemented methods are under `claim-generation-data/main-experiment-annotations/{0,1,2}.csv`. These files consist of the following fields:
+
+```
+ID: ID of the citance, should be the same for all claims which come from the same citance
+Method: The name of the method and which round of curriculum learning the claim was generated from in the format {method}_{cl round} (0 indicates no curriculum learning)
+annotator: The annotator ID
+Original Sentence: The citance the claim was generated from (only present for the first claim in a set, otherwise blank)
+Claim: The generated claim
+Fluency: The fluency score
+De-Contextualized: De-contextualized rating
+Atomicity: Atomicity rating
+Context: The surrounding context for the citance (only present for the first claim in a set, otherwise blank)
+Original Sentence: Repeated original sentence for the annotators' convenience (only present for the first claim in a set, otherwise blank)
+Claim: Repeated claim for the annotators' convenience
+Faithfulness: The faithfulness score
+Notes: Any notes the annotator took
+```
+
+To get IAA, perform evaluation, and generated graphs from this data, execute the following:
+
+```
+python dataset_tools/get_annotator_agreement_and_evaluate.py \
+  --annotation_files annotation_data/main_experiment_1/0.csv \
+                     annotation_data/main_experiment_1/1.csv \
+                     annotation_data/main_experiment_1/2.csv \
+  --do_eval
+```
+
+This produced the following yield:
+
+| Method        | # generated claims | # accepted claims | precision |
+|---------------|:------------------:|:-----------------:|:---------:|
+|Entity centric |893                 |111                |12.43      |

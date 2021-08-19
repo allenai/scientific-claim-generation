@@ -215,3 +215,9 @@ This produced the following yield:
 | Method        | # generated claims | # accepted claims | precision |
 |---------------|:------------------:|:-----------------:|:---------:|
 |Entity centric |893                 |111                |12.43      |
+|BART Generation|156                 |34                 |21.79      |
+|  + 1 round CL |147                 |36                 |24.49      |
+|  + 2 round CL |145                 |35                 |24.14      |
+|  + 3 round CL |146                 |38                 |26.03      |
+|  + 4 round CL |143                 |33                 |23.08      |
+|  + 5 round CL |148                 |34                 |22.97      |

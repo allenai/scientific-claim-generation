@@ -1,5 +1,5 @@
 # Scientific Claim Generation
-This repository contains data and experiments associated with the ACL 2022 paper "Generating Scientific Claims for Zero-Shot Scientific Fact Checking." We explore methods for generating scientific claims from citation sentences and heuristic assignment of fact checking labels to improve zero-shot scientific fact checking.
+This repository contains data and experiments associated with the ACL 2022 (accepted) paper "Generating Scientific Claims for Zero-Shot Scientific Fact Checking." We explore methods for generating scientific claims from citation sentences and heuristic assignment of fact checking labels to improve zero-shot scientific fact checking.
 
 ## Method
 We approached claim generation in two settings:

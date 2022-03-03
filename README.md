@@ -77,7 +77,7 @@ wget https://scifact.s3-us-west-2.amazonaws.com/release/latest/claims_with_citan
 
 4. Download the checkpoint for the ParagraphJointModel [here](https://drive.google.com/file/d/1hMrQzFe1EaJpCN9s3pF27Wu3amBbekiI/view?usp=sharing) and place it under claim-generation-data/models
 
-5. Download UMLS either [here](https://www.nlm.nih.gov/research/umls/licensedcontent/umlsknowledgesources.html) or by asking Lucy. You only need the MRCONSO file.
+5. Download UMLS by following the instructions [here](https://www.nlm.nih.gov/research/umls/licensedcontent/umlsknowledgesources.html). Our experiments used the 2018AB version. You only need the MRCONSO file.
 
 6. Download cui2vec vectors [here](https://figshare.com/s/00d69861786cd0156d81)
 

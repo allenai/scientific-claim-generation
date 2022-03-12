@@ -4,7 +4,6 @@ import pandas as pd
 import torch
 import numpy as np
 from tqdm import tqdm
-import yake
 import spacy
 import scispacy
 from scispacy.linking import EntityLinker
@@ -41,69 +40,6 @@ with open('cui2vec/cui2vec_pretrained.csv') as f:
     for l in f:
         fields = l.strip().split(',')
         cui2vec[fields[0][1:-1]] = np.array(fields[1:], dtype=np.float32)
-
-
-def covidfact_negation(
-        claims: List[AnyStr],
-        fillmask: FillMaskPipeline,
-        nli: TextClassificationPipeline,
-        tokenizer: PreTrainedTokenizer,
-        n_keywords: int = 3) -> List[List]:
-    """
-    Basic negative generation based on COVID-Fact paper; finds keywords using YAKE, uses masked language model infilling
-    to fill masked keywords, ranks multiple generations using an NLI model, returns the claims with highest contradiction
-    :param claims:
-    :param fillmask:
-    :param nli:
-    :param tokenizer:
-    :param n_keywords:
-    :return:
-    """
-    # Get keywords
-    kw_extractor = yake.KeywordExtractor()
-    csv_fields = []
-    for c in claims:
-        keywords = kw_extractor.extract_keywords(c)
-        csv_fields.append([c, [k[0] for k in keywords[:n_keywords]]])
-
-    claims = pd.DataFrame(csv_fields, columns=['claim', 'keyword'])
-    # claims = pd.read_csv(fname)
-
-    # dir = '/content/drive/MyDrive/misinformation-NLP/results/'
-    data = []
-    i = 0
-    for claim, keywords in tqdm(zip(claims['claim'],
-                                        claims['keyword'])):
-        i += 1
-        if claim[-1] != ".":
-            # if there is no . at the end and we are replacing last word, the model will just predict a punctuation mark
-            claim = claim + "."
-
-        curr_claims = []
-        for keyword in keywords:
-            masked_text = claim.lower().replace(str(keyword).lower(), tokenizer.mask_token, 1)
-            # print(masked_text)
-
-            try:
-                suggs = fillmask(masked_text, top_k=10)  # CHANGED TO 10
-                suggs = [sent['sequence'].replace("<s>", "").replace("</s>", "") for sent in suggs]
-                suggs = set(suggs)
-            except:
-                continue
-                pass
-
-            for sug in suggs:
-                if sug != claim.lower():
-                    score = nli(f"{claim}</s></s>{sug}")[0][0]['score']
-                    curr_claims.append([claim, keyword, sug, score])
-        if len(curr_claims) > 0:
-            top_claim = list(sorted(curr_claims, key=lambda x: x[-1], reverse=True))[0][2]
-        else:
-            top_claim = claim
-        data.append(top_claim)
-
-    return data
-
 
 def get_perplexity(
         sentences: List[AnyStr],

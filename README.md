@@ -175,7 +175,7 @@ python dataset_tools/get_annotator_agreement_and_evaluate.py --annotation_files 
   
 ```
 
-## Initial results
+## Manual annotation results
 
 CSVs with human annotations for the implemented methods are under `claim-generation-data/main-experiment-annotations/{0,1,2}.csv`. These files consist of the following fields:
 
@@ -195,7 +195,7 @@ Faithfulness: The faithfulness score
 Notes: Any notes the annotator took
 ```
 
-To get IAA, perform evaluation, and generated graphs from this data, execute the following:
+To get IAA, perform evaluation, and generate graphs from this data, execute the following:
 
 ```
 python dataset_tools/get_annotator_agreement_and_evaluate.py \
@@ -205,3 +205,15 @@ python dataset_tools/get_annotator_agreement_and_evaluate.py \
   --do_eval
 ```
 
+## Citation
+Please use the following when citing this work:
+
+```
+@inproceedings{conf/acl2022/Wright,
+author = {Wright, Dustin and Wadden, David and Lo, Kyle and Kuehl, Bailey and Cohan, Arman and Augenstein, Isabelle and Lu Wang, Lucy},
+booktitle = {Proceedings of the 2022 Annual Conference of the Association for Computational Linguistics (ACL)},
+publisher = {Association for Computational Linguistics},
+title = {{Generating Scientific Claims for Zero-Shot Scientific Fact Checking}},
+year = 2022
+}
+```

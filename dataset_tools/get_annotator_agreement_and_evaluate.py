@@ -1,4 +1,4 @@
-import krippendorff
+import simpledorff
 from sklearn.metrics import cohen_kappa_score
 import pandas as pd
 import argparse
@@ -119,13 +119,6 @@ if __name__ == '__main__':
             #     print(f"Fluency % all equal: {sum(np.all(row == row[0]) for row in reliablility_data.T) / reliablility_data.shape[1]}")
             if col == 'Faithfulness':
                 print_pearson(reliablility_data.T)
-                #print((reliablility_data == 3).sum(0))
-                # reliablility_data[reliablility_data == 2] = 0
-                # reliablility_data[reliablility_data == 1] = 0
-                # reliablility_data[reliablility_data == 3] = 1
-                # reliablility_data[reliablility_data == 5] = 1
-                # reliablility_data[reliablility_data == 4] = 1
-                #print((reliablility_data > 3).sum(-1) / reliablility_data.shape[1])
                 for i in range(reliablility_data.shape[0]):
                     for j in range(reliablility_data.shape[1]):
                         if not math.isnan(reliablility_data[i,j]):
@@ -133,8 +126,6 @@ if __name__ == '__main__':
                                 reliablility_data[i,j] = 1
                             else:
                                 reliablility_data[i,j] = 0
-                #print(reliablility_data)
-            #ipdb.set_trace()
 
             # Get straight disagreement %
             collapsed_agreement = []
@@ -143,7 +134,19 @@ if __name__ == '__main__':
                 if len(vals) > 0:
                     collapsed_agreement.append(all(v == vals[0] for v in vals))
 
-            alpha = krippendorff.alpha(reliability_data=reliablility_data, level_of_measurement='nominal')
+            # convert into dataframe for simpledorff
+            array_of_reliability_data = []
+            for annotator_index, annotation_values in enumerate(reliablility_data):
+                for entry_index, value in enumerate(annotation_values):
+                    array_of_reliability_data.append([entry_index, annotator_index, value])
+            df_reliability = pd.DataFrame(array_of_reliability_data, columns=['claim_id', 'annotator_id', 'annotation'])
+            alpha = simpledorff.calculate_krippendorffs_alpha_for_df(
+                df_reliability,
+                experiment_col='claim_id',
+                annotator_col='annotator_id',
+                class_col='annotation'
+            )
+
             print(f"{col}: {alpha}\t{sum(collapsed_agreement) / len(collapsed_agreement)}")
         all_annotations = pd.concat([get_annotation_median_score(annotations_multi)] + [ann[split_point:] for ann in annotations])
     else:

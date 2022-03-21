@@ -21,6 +21,7 @@ dependencies:
     - jsonlines==2.0.0
     - nltk==3.6.2
     - rouge-score==0.0.4
+    - simpledorff==0.0.2
     - scispacy==0.4.0
     - spacy==3.0.0
     - tokenizers==0.10.3

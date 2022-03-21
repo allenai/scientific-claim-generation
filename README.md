@@ -18,10 +18,6 @@ In the supervised setting, we train a BART model to directly generate claims fro
 
 In this case, the context consists of the surounding two sentences from the original citance. During generation, we sample multiple generations from the language model for a given citance. We use half of the number of noun chunks in the original citance as the number of sample generations.
 
-### Curriculum learning
-We attempted to improve over the base models by using curriculum learning. We gradually introduce more data to either re-train the NER module (in the zero-shot case) or BART (in the supervised case) by selecting claims which are easily verifiable by an external pre-trained fact checking model. We use the [ParagraphJointModel](https://arxiv.org/abs/2012.14500) pre-trained on FEVER and SciFact to rank claims. Generated claims are paired with the abstracts of the documents which their original citances reference, which gives a set of probabilities $P = {p_0,...,p_N}$ for each generated claim. The score for a given claim is then $s = max_{i}(p_i[SUPPORT] - p_i[CONTRADICT])$. We then rank all claims using this score and select all claims where $s > 0.5$ to re-train the model. For the supervised setting this is straight-forward (pair the claim with the original citance). In the NER case, we take the *entity* from the accepted claims, pair them with their original citances, and re-train an NER model starting from the scispacy `en_core_sci_md` model, which is trained on MedMentions.
-
-
 ### Claim variants
 #### SUPPORT
 `SUPPORT` claims are created by pairing a generated claim as-is with the abstracts of documents that are cited in the original citance. Since rationales are not labeled in this setup, one should train a model such as LongChecker using these claims (which can perform inference using the entire abstract).
@@ -63,7 +59,7 @@ This will contain the following files:
 - claim-generation-data/citeworth/citeworth\_citances.jsonl: Original unlabeled citances from citeworth
 - claim-generation-data/citeworth/external\_corpus.jsonl: The abstracts for all papers references by the citances in citeworth\_citances.jsonl (which are available in S2ORC)
 - claim-generation-data/citeworth/internal\_corpus.jsonl: All paragraphs from the documents which the citances in citeworth\_citances.jsonl come from
-- claim-generation-data/sampled_citances/: Train, dev, and test splits of sample citances which have already been pre-processed for use with the curriculum learning scripts (these are the samples used in the initial experiments we ran)
+- claim-generation-data/sampled_citances/: Train, dev, and test splits of sample citances which have already been pre-processed 
 - claim-generation-data/models/: Trained models for question generation (question\_gen\_squad) trained on the SQuAD dataset and claim generation (claim\_gen) trained on QA2D
 
 2. Download the original claim generation data from SciFact:
@@ -102,10 +98,10 @@ python dataset_tools/create_train_test_splits_from_citances.py \
   --output_dir claim-generation-data/new_sampled_citances
 ```
 
-Before running either curriculum learning method, edit the paths in `generate_claim_variants.py` at lines 31 and 39 to point to where you downloaded the UMLS MRCONSO file and cui2vec vectors. Then, to run curriculum learning for the zero-shot method, execute the following:
+Before running either method, edit the paths in `generate_claim_variants.py` at lines 31 and 39 to point to where you downloaded the UMLS MRCONSO file and cui2vec vectors. Then, to run ClaimGen-Entity, execute the following:
 
 ```
-python curriculum_learning_ner_pipeline.py \
+python claimgen_entity.py \
   --train_citances claim-generation-data/sampled_citances/train.jsonl \
   --test_citances claim-generation-data/sampled_citances/test.jsonl \
   --qg_model_name claim-generation-data/models/question_gen_squad/ \
@@ -117,17 +113,17 @@ python curriculum_learning_ner_pipeline.py \
   --output_dir claim-generation-data/output/zero_shot_cl_5_rounds
 ```
 
-To run curriculum learning for the supervised method, execute the following:
+To run ClaimGen-BART, execute the following:
 
 ```
-python curriculum_learning_scifact_bart_training.py \
+python claimgen_bart.py \
   --model_name facebook/bart-base \
   --train_dset claim-generation-data/scifact_claim_data/claim_generation_data_train.jsonl \
   --val_dset claim-generation-data/scifact_claim_data/claim_generation_data_dev.jsonl \
   --predict_dset claim-generation-data/sampled_citances/train.jsonl \
   --test_dset claim-generation-data/sampled_citances/test.jsonl \
   --num_beams 3 \
-  --output_dir claim-generation-data/models/curriculum_scifact_model \
+  --output_dir claim-generation-data/models/scifact_model \
   --do_train \
   --do_eval \
   --do_predict \
@@ -139,7 +135,7 @@ python curriculum_learning_scifact_bart_training.py \
   --num_train_epochs 3 \
   --warmup_steps 200 \
   --seed 1000 \
-  --run_name bart_scifact_curriculum \
+  --run_name bart_scifact \
   --should_log \
   --save_strategy epoch \
   --eval_accumulation_steps 2 \
@@ -150,11 +146,10 @@ python curriculum_learning_scifact_bart_training.py \
   --internal_corpus_file claim-generation-data/citeworth/internal_corpus.jsonl
 ```
 
-Both of these methods will create the following output files ({0-5} indicates that a new set of files is generated for each round of curriculum learning):
+Both of these methods will create the following output files:
 
 ```
-claim-generation-data/output/{method}/{0-5}
-  | added_claims.jsonl: The claims which were added on that round for curriculum learning
+claim-generation-data/output/{method}
   | output_scifact_dev_claims.jsonl: Claims generated from the dev split of the scifact claim generation data
   | output_test_claims.jsonl: Claims generated from the test portion of the unlabeled citances (test_citances and test_dset above)
   | ranked_claims.csv: Claims ranked by their score s, in a csv file for easier viewing
@@ -166,7 +161,7 @@ To then sample a set of citances and combine/shuffle claims and prepare a set of
 
 ```
 python dataset_tools/combine_claims_and_sample_data_for_annotation.py \
-  --claims_files claim-generation-data/output/supervised_cl_5_rounds/0/output_test_claims.jsonl claim-generation-data/output/supervised_cl_5_rounds/1/output_test_claims.jsonl ... \
+  --claims_files claim-generation-data/output/output_test_claims.jsonl \
   --shared_size 10 \
   --set_sizes 30 30 30 \
   --annotator_names ann_0 ann_1 ann_2 \
@@ -186,7 +181,7 @@ CSVs with human annotations for the implemented methods are under `claim-generat
 
 ```
 ID: ID of the citance, should be the same for all claims which come from the same citance
-Method: The name of the method and which round of curriculum learning the claim was generated from in the format {method}_{cl round} (0 indicates no curriculum learning)
+Method: The name of the method 
 annotator: The annotator ID
 Original Sentence: The citance the claim was generated from (only present for the first claim in a set, otherwise blank)
 Claim: The generated claim
@@ -209,16 +204,4 @@ python dataset_tools/get_annotator_agreement_and_evaluate.py \
                      annotation_data/main_experiment_1/2.csv \
   --do_eval
 ```
-
-This produced the following yield:
-
-| Method        | # generated claims | # accepted claims | precision |
-|---------------|:------------------:|:-----------------:|:---------:|
-|Entity centric |893                 |111                |12.43      |
-|BART Generation|156                 |34                 |21.79      |
-|  + 1 round CL |147                 |36                 |24.49      |
-|  + 2 round CL |145                 |35                 |24.14      |
-|  + 3 round CL |146                 |38                 |26.03      |
-|  + 4 round CL |143                 |33                 |23.08      |
-|  + 5 round CL |148                 |34                 |22.97      |
 

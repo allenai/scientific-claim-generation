@@ -20,7 +20,7 @@ from collections import defaultdict
 from scipy.special import softmax
 from typing import Optional, Union
 from datasets import load_dataset, load_metric, concatenate_datasets
-from generate_claim_variants import generate_negative_claims_using_linker
+from generate_claim_variants import kbin
 from transformers import pipeline
 
 
@@ -323,7 +323,7 @@ if __name__ == '__main__':
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     train_preprocessor = partial(data_preprocess, tokenizer, train_dset_name)
     train_dset_base = load_dataset('json', data_files=[train_dset_name])
-    train_dset_base = train_dset_base.map(train_preprocessor, batched=True)['train']
+    train_dset = train_dset_base.map(train_preprocessor, batched=True)['train']
 
     val_preprocessor = partial(data_preprocess, tokenizer, val_dset_name)
     val_dset_base = load_dataset('json', data_files=[val_dset_name])
@@ -369,219 +369,121 @@ if __name__ == '__main__':
     test_dset_base = Dataset.from_dict(test_data)
     test_dset = test_dset_base.map(test_preprocessor, batched=True)
 
-    added_training_data = None
     final_claims = []
-    n_epochs = 6
-    for epoch in range(n_epochs):
-        if len(gen_dset) == 0:
-            break
-        if not os.path.exists(f"{dm_args.output_claim_dir}/{epoch}"):
-            os.makedirs(f"{dm_args.output_claim_dir}/{epoch}")
+    if len(gen_dset) == 0:
+        break
+    if not os.path.exists(f"{dm_args.output_claim_dir}"):
+        os.makedirs(f"{dm_args.output_claim_dir}")
 
-        save_dir = f"{dm_args.output_claim_dir}/{epoch}"
-        # Create the model
-        model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(device)
-        data_collator = DataCollatorForSeq2Seq(
-            tokenizer,
-            model=model,
-            label_pad_token_id=-100,
-            padding='longest'
-        )
-        # Concatenate base training data and added training data
-        if added_training_data is not None:
-            train_dset = concatenate_datasets([train_dset_base, added_training_data])
-        else:
-            train_dset = train_dset_base
+    save_dir = f"{dm_args.output_claim_dir}/{epoch}"
+    # Create the model
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(device)
+    data_collator = DataCollatorForSeq2Seq(
+        tokenizer,
+        model=model,
+        label_pad_token_id=-100,
+        padding='longest'
+    )
 
-        trainer = CustomTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_dset,
-            eval_dataset=val_dset,
-            tokenizer=tokenizer,
-            data_collator=data_collator,
-            compute_metrics=partial(compute_metrics, tokenizer,
-                                    metric) if training_args.do_train or training_args.do_eval else None
-        )
+    trainer = CustomTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dset,
+        eval_dataset=val_dset,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+        compute_metrics=partial(compute_metrics, tokenizer,
+                                metric) if training_args.do_train or training_args.do_eval else None
+    )
 
-        # Train BART
-        train_result = trainer.train()
-        trainer.save_model()
-        metrics = train_result.metrics
-        trainer.log_metrics("train", metrics)
-        trainer.save_metrics("train", metrics)
-        trainer.save_state()
+    # Train BART
+    train_result = trainer.train()
+    trainer.save_model()
+    metrics = train_result.metrics
+    trainer.log_metrics("train", metrics)
+    trainer.save_metrics("train", metrics)
+    trainer.save_state()
 
-        # Run claim generation on dev set, test set, and scifact dev citances
-        dl = trainer.get_test_dataloader(gen_dset)
-        generated_claims, fc_claim_inputs = generate_claims(model, gen_dset, dl, tokenizer, device, dm_args.num_beams)
+    # Run claim generation on dev set, test set, and scifact dev citances
+    dl = trainer.get_test_dataloader(gen_dset)
+    generated_claims, fc_claim_inputs = generate_claims(model, gen_dset, dl, tokenizer, device, dm_args.num_beams)
 
 
-        test_dl = trainer.get_test_dataloader(test_dset)
-        test_gen_claims, _ = generate_claims(model, test_dset, test_dl, tokenizer, device, dm_args.num_beams)
-        with open(f"{save_dir}/output_test_claims.jsonl", 'wt') as f:
-            for c in test_gen_claims:
-                f.write(json.dumps(c) + '\n')
+    test_dl = trainer.get_test_dataloader(test_dset)
+    test_gen_claims, _ = generate_claims(model, test_dset, test_dl, tokenizer, device, dm_args.num_beams)
+    with open(f"{save_dir}/output_test_claims.jsonl", 'wt') as f:
+        for c in test_gen_claims:
+            f.write(json.dumps(c) + '\n')
 
-        scifact_dev_claims, _ = generate_claims(model, val_dset, trainer.get_test_dataloader(val_dset), tokenizer, device, dm_args.num_beams)
-        with open(f"{save_dir}/output_scifact_dev_claims.jsonl", 'wt') as f:
-            for c in scifact_dev_claims:
-                f.write(json.dumps(c) + '\n')
+    scifact_dev_claims, _ = generate_claims(model, val_dset, trainer.get_test_dataloader(val_dset), tokenizer, device, dm_args.num_beams)
+    with open(f"{save_dir}/output_scifact_dev_claims.jsonl", 'wt') as f:
+        for c in scifact_dev_claims:
+            f.write(json.dumps(c) + '\n')
 
-        model.to('cpu')
-        # Run FC model to get scores for generated claims
-        fc_model.to(device)
-        fc_dev_set = SciFactParagraphBatchDataset(dm_args.external_corpus_file, fc_claim_inputs,
-                                                  sep_token=fc_tokenizer.sep_token, k=0, train=False)
+    model.to('cpu')
+    # Run FC model to get scores for generated claims
+    fc_model.to(device)
+    fc_dev_set = SciFactParagraphBatchDataset(dm_args.external_corpus_file, fc_claim_inputs,
+                                              sep_token=fc_tokenizer.sep_token, k=0, train=False)
 
-        rationale_predictions, stance_preds, stance_scores = predict(fc_model, fc_dev_set, 16, dm_args.fc_model_name, fc_tokenizer, device)
-        rationale_json = rationale2json(fc_dev_set.samples, rationale_predictions)
-        stance_json = stance2json(fc_dev_set.samples, stance_preds, stance_scores)
-        stance_json = post_process_stance(rationale_json, stance_json)
-        merged_json = merge_json(rationale_json, stance_json)
-        fc_model.to('cpu')
+    rationale_predictions, stance_preds, stance_scores = predict(fc_model, fc_dev_set, 16, dm_args.fc_model_name, fc_tokenizer, device)
+    rationale_json = rationale2json(fc_dev_set.samples, rationale_predictions)
+    stance_json = stance2json(fc_dev_set.samples, stance_preds, stance_scores)
+    stance_json = post_process_stance(rationale_json, stance_json)
+    merged_json = merge_json(rationale_json, stance_json)
+    fc_model.to('cpu')
 
-        # Rank predictions and save them
-        sorted_fc_claims = sort_fc_claims(merged_json, generated_claims)
-        with open(f"{save_dir}/sorted_fc_claims.jsonl", 'wt') as f:
-            for c in sorted_fc_claims:
-                f.write(json.dumps(c) + '\n')
+    # Generate negative claims
+    for claim_set in tqdm(test_gen_claims):
+        neg_claims = kbin([claim_set['generated_claim']], nli, lm, lm_tk, device, 3)
+        claim_set['neg_claim'] = neg_claims[0][2] if neg_claims[0] is not None else None
 
-        # Take all claims with score > 0.5 and add to training data, remove from test data
-        if epoch < n_epochs - 1:
-            add_to_data = [c for c in sorted_fc_claims if c['score'] > 0.5]
-        else:
-            add_to_data = sorted_fc_claims
+    # Pick 1/3 to be supports, 1/3 to be contradicts, and 1/3 to be NEI
+    def incgen():
+        val = 0
+        while True:
+            val += 1
+            yield val
+    inc = incgen()
+    base_claims_and_evidence = []
+    for claim_set in test_gen_claims:
+        # Remove ID suffix to get original paper ID
+        original_doc_id = claim_set['id']
+        original_doc_id = original_doc_id[:original_doc_id.rfind('_')]
 
-        # Add selected claims to the training set, make the remaining claims the test set
-        add_data = defaultdict(list)
-        add_data_map = set()
-        for claim in add_to_data:
-            id_ = claim['id']
-            id_ = id_[:id_.rfind('_')]
-            add_data_map.add(id_)
-            add_data['doc_id'].append(id_)
-            add_data['paper_id'].append(claim['paper_id'])
-            add_data['context'].append(claim['context'])
-            add_data['claims'].append(claim['generated_claim'])
-            add_data['evidence'].append(claim['evidence'])
-            add_data['orig_context'].append(claim['orig_context'])
-            add_data['citance'].append(claim['citance'])
-            add_data['score'].append(claim['score'])
-            add_data['num_return_sequences'].append(claim['num_return_sequences'])
-
-        remaining = [c for c in sorted_fc_claims if c['score'] <= 0.5]
-        remain_data = defaultdict(list)
-        remain_ids = set()
-        for claim in remaining:
-            id_ = claim['id']
-            id_ = id_[:id_.rfind('_')]
-            if id_ not in add_data_map and id_ not in remain_ids:
-                remain_ids.add(id_)
-                remain_data['doc_id'].append(id_)
-                remain_data['paper_id'].append(claim['paper_id'])
-                remain_data['context'].append(claim['context'])
-                remain_data['claims'].append("")
-                remain_data['evidence'].append(claim['evidence'])
-                remain_data['orig_context'].append(claim['orig_context'])
-                remain_data['citance'].append(claim['citance'])
-                remain_data['num_return_sequences'].append(claim['num_return_sequences'])
-
-        # Create predict dset
-        if added_training_data is None:
-            added_training_data_base = Dataset.from_dict(add_data)
-            added_training_data = added_training_data_base.map(pred_preprocessor, batched=True)
-        else:
-            new_training_data_base = Dataset.from_dict(add_data)
-            added_training_data = concatenate_datasets([added_training_data, new_training_data_base.map(pred_preprocessor, batched=True)])
-
-        gen_dset_base = Dataset.from_dict(remain_data)
-        gen_dset = gen_dset_base.map(pred_preprocessor, batched=True)
-
-
-        csv_out = []
-        original_claim_data = []
-        prev_id = ''
-        j = 0
-        # Save added claims to a jsonl for analysis
-        with open(f"{save_dir}/added_claims.jsonl", 'wt') as f:
-            for id_,paper_id,context,citance,claim,score in zip(added_training_data['doc_id'],
-                                                                         added_training_data['paper_id'],
-                                                                         added_training_data['orig_context'],
-                                                                         added_training_data['citance'],
-                                                                         added_training_data['claims'],
-                                                                         added_training_data['score']):
-                if len(claim.strip()) == 0 or claim.strip() == '.':
-                    claim = citance
-
-                original_claim_data.append({
-                    'doc_id': id_,
-                    'paper_id': paper_id,
-                    'context': context,
-                    'citance': citance,
-                    'claims': [claim],
-                    'scores': score
-                })
-                f.write(json.dumps(original_claim_data[-1]) + '\n')
-
-                csv_out.append([f"{id_}_{j}", context, citance, claim, score])
-                j += 1
-
-        # Save the scored added claims for this round of curriculum learning
-        csv_pd = pd.DataFrame(csv_out, columns=['ID', 'Context', 'Original Sentence', 'Claim', 'Score'])
-        csv_pd.to_csv(f"{save_dir}/ranked_claims.csv", index=None)
-
-        # Generate negative claims
-        for claim_set in tqdm(test_gen_claims):
-            neg_claims = generate_negative_claims_using_linker([claim_set['generated_claim']], nli, lm, lm_tk, device, 3)
-            claim_set['neg_claim'] = neg_claims[0][2] if neg_claims[0] is not None else None
-
-        # Pick 1/3 to be supports, 1/3 to be contradicts, and 1/3 to be NEI
-        def incgen():
-            val = 0
-            while True:
-                val += 1
-                yield val
-        inc = incgen()
-        base_claims_and_evidence = []
-        for claim_set in test_gen_claims:
-            # Remove ID suffix to get original paper ID
-            original_doc_id = claim_set['id']
-            original_doc_id = original_doc_id[:original_doc_id.rfind('_')]
-
-            pos_claim = claim_set['generated_claim']
-            neg_claim = claim_set['neg_claim']
-            type = random.randint(0,2)
-            if type == 0 or neg_claim == None:
+        pos_claim = claim_set['generated_claim']
+        neg_claim = claim_set['neg_claim']
+        type = random.randint(0,2)
+        if type == 0 or neg_claim == None:
+            base_claims_and_evidence.append({
+                'id': next(inc),
+                'claim': pos_claim,
+                'evidence': {str(doc_id): [{'sentences': [0], 'label': 'SUPPORT'}] for doc_id in claim_set['evidence']},
+                'cited_doc_ids': claim_set['evidence']
+            })
+        elif type == 1:
+            base_claims_and_evidence.append({
+                'id': next(inc),
+                'claim': neg_claim,
+                'evidence': {str(doc_id): [{'sentences': [0], 'label': 'CONTRADICT'}] for doc_id in claim_set['evidence']},
+                'cited_doc_ids': claim_set['evidence']
+            })
+        elif type == 2:
+            nei_type = random.randint(0, 1)
+            if nei_type == 0:
                 base_claims_and_evidence.append({
                     'id': next(inc),
                     'claim': pos_claim,
-                    'evidence': {str(doc_id): [{'sentences': [0], 'label': 'SUPPORT'}] for doc_id in claim_set['evidence']},
-                    'cited_doc_ids': claim_set['evidence']
+                    'evidence': {},
+                    'cited_doc_ids': [original_doc_id]
                 })
-            elif type == 1:
+            else:
                 base_claims_and_evidence.append({
                     'id': next(inc),
                     'claim': neg_claim,
-                    'evidence': {str(doc_id): [{'sentences': [0], 'label': 'CONTRADICT'}] for doc_id in claim_set['evidence']},
-                    'cited_doc_ids': claim_set['evidence']
+                    'evidence': {},
+                    'cited_doc_ids': [original_doc_id]
                 })
-            elif type == 2:
-                nei_type = random.randint(0, 1)
-                if nei_type == 0:
-                    base_claims_and_evidence.append({
-                        'id': next(inc),
-                        'claim': pos_claim,
-                        'evidence': {},
-                        'cited_doc_ids': [original_doc_id]
-                    })
-                else:
-                    base_claims_and_evidence.append({
-                        'id': next(inc),
-                        'claim': neg_claim,
-                        'evidence': {},
-                        'cited_doc_ids': [original_doc_id]
-                    })
-        with open(f"{save_dir}/scifact_claims.jsonl", 'wt') as f:
-            for c in base_claims_and_evidence:
-                f.write(json.dumps(c) + '\n')
+    with open(f"{save_dir}/scifact_claims.jsonl", 'wt') as f:
+        for c in base_claims_and_evidence:
+            f.write(json.dumps(c) + '\n')

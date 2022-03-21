@@ -17,7 +17,7 @@ import ipdb
 from collections import defaultdict
 from scipy.special import softmax
 from spacy.util import minibatch, compounding
-from generate_claim_variants import generate_negative_claims_using_linker
+from generate_claim_variants import kbin
 from transformers import pipeline
 
 
@@ -360,191 +360,184 @@ if __name__ == '__main__':
         test_citances = [json.loads(l) for l in f]
     ner_data = []
     output_claims = []
-    n_epochs = 6
-    for epoch in range(n_epochs):
-        if not os.path.exists(f"{args.output_dir}/{epoch}"):
-            os.makedirs(f"{args.output_dir}/{epoch}")
+    if not os.path.exists(f"{args.output_dir}"):
+        os.makedirs(f"{args.output_dir}")
 
-        save_dir = f"{args.output_dir}/{epoch}"
+    save_dir = f"{args.output_dir}"
 
-        question_gen_input = get_named_entities(citances, nlp)
-        val_question_gen_input = get_named_entities(val_citances, nlp)
-        test_question_gen_input = get_named_entities(test_citances, nlp)
+    question_gen_input = get_named_entities(citances, nlp)
+    val_question_gen_input = get_named_entities(val_citances, nlp)
+    test_question_gen_input = get_named_entities(test_citances, nlp)
 
-        ############ Generate questions from NER
-        qg_model.to(device)
-        preprocessor = partial(qg_data_preprocess, qg_tokenizer, 'local')
-        gen_dset_base = Dataset.from_dict(question_gen_input)
-        val_gen_dset_base = Dataset.from_dict(val_question_gen_input)
-        test_gen_dset_base = Dataset.from_dict(test_question_gen_input)
+    ############ Generate questions from NER
+    qg_model.to(device)
+    preprocessor = partial(qg_data_preprocess, qg_tokenizer, 'local')
+    gen_dset_base = Dataset.from_dict(question_gen_input)
+    val_gen_dset_base = Dataset.from_dict(val_question_gen_input)
+    test_gen_dset_base = Dataset.from_dict(test_question_gen_input)
 
-        # Filter missing NER
-        #gen_dset_base = gen_dset_base.filter(lambda example: len(example['answers']) > 0)
-        gen_dset = gen_dset_base.map(preprocessor, batched=True)
-        val_gen_dset = val_gen_dset_base.map(preprocessor, batched=True)
-        test_gen_dset = test_gen_dset_base.map(preprocessor, batched=True)
+    # Filter missing NER
+    #gen_dset_base = gen_dset_base.filter(lambda example: len(example['answers']) > 0)
+    gen_dset = gen_dset_base.map(preprocessor, batched=True)
+    val_gen_dset = val_gen_dset_base.map(preprocessor, batched=True)
+    test_gen_dset = test_gen_dset_base.map(preprocessor, batched=True)
 
-        data_collator = DataCollatorForSeq2Seq(
-            qg_tokenizer,
-            model=qg_model,
-            label_pad_token_id=-100,
-            padding='longest'
-        )
-        qg_trainer = CustomTrainer(
-            model=qg_model,
-            tokenizer=qg_tokenizer,
-            data_collator=data_collator
-        )
-        claim_gen_input = run_question_generation(qg_trainer, gen_dset, qg_model, qg_tokenizer, device, args.num_beams)
-        val_claim_gen_input = run_question_generation(qg_trainer, val_gen_dset, qg_model, qg_tokenizer, device, args.num_beams)
-        test_claim_gen_input = run_question_generation(qg_trainer, test_gen_dset, qg_model, qg_tokenizer, device, args.num_beams)
+    data_collator = DataCollatorForSeq2Seq(
+        qg_tokenizer,
+        model=qg_model,
+        label_pad_token_id=-100,
+        padding='longest'
+    )
+    qg_trainer = CustomTrainer(
+        model=qg_model,
+        tokenizer=qg_tokenizer,
+        data_collator=data_collator
+    )
+    claim_gen_input = run_question_generation(qg_trainer, gen_dset, qg_model, qg_tokenizer, device, args.num_beams)
+    val_claim_gen_input = run_question_generation(qg_trainer, val_gen_dset, qg_model, qg_tokenizer, device, args.num_beams)
+    test_claim_gen_input = run_question_generation(qg_trainer, test_gen_dset, qg_model, qg_tokenizer, device, args.num_beams)
 
-        qg_model.to('cpu')
+    qg_model.to('cpu')
 
-        ############ Generate claims from questions
-        q2c_model.to(device)
-        preprocessor = partial(q2c_data_preprocess, q2c_tokenizer, 'citeworth')
-        gen_dset_base = Dataset.from_dict(claim_gen_input)
-        val_gen_dset_base = Dataset.from_dict(val_claim_gen_input)
-        test_gen_dset_base = Dataset.from_dict(test_claim_gen_input)
+    ############ Generate claims from questions
+    q2c_model.to(device)
+    preprocessor = partial(q2c_data_preprocess, q2c_tokenizer, 'citeworth')
+    gen_dset_base = Dataset.from_dict(claim_gen_input)
+    val_gen_dset_base = Dataset.from_dict(val_claim_gen_input)
+    test_gen_dset_base = Dataset.from_dict(test_claim_gen_input)
 
-        gen_dset = gen_dset_base.map(preprocessor, batched=True)
-        val_gen_dset = val_gen_dset_base.map(preprocessor, batched=True)
-        test_gen_dset = test_gen_dset_base.map(preprocessor, batched=True)
-        data_collator = DataCollatorForSeq2Seq(
-            q2c_tokenizer,
-            model=q2c_model,
-            label_pad_token_id=-100,
-            padding='longest'
-        )
-        q2c_trainer = CustomTrainer(
-            model=q2c_model,
-            tokenizer=q2c_tokenizer,
-            data_collator=data_collator
-        )
+    gen_dset = gen_dset_base.map(preprocessor, batched=True)
+    val_gen_dset = val_gen_dset_base.map(preprocessor, batched=True)
+    test_gen_dset = test_gen_dset_base.map(preprocessor, batched=True)
+    data_collator = DataCollatorForSeq2Seq(
+        q2c_tokenizer,
+        model=q2c_model,
+        label_pad_token_id=-100,
+        padding='longest'
+    )
+    q2c_trainer = CustomTrainer(
+        model=q2c_model,
+        tokenizer=q2c_tokenizer,
+        data_collator=data_collator
+    )
 
-        generated_claims, fc_claim_inputs = run_claim_generation(q2c_trainer, gen_dset, q2c_model, q2c_tokenizer, device, args.num_beams)
-        val_generated_claims, _ = run_claim_generation(q2c_trainer, val_gen_dset, q2c_model, q2c_tokenizer,
-                                                                 device, args.num_beams)
-        test_generated_claims, _ = run_claim_generation(q2c_trainer, test_gen_dset, q2c_model, q2c_tokenizer, device,
-                                                                args.num_beams)
+    generated_claims, fc_claim_inputs = run_claim_generation(q2c_trainer, gen_dset, q2c_model, q2c_tokenizer, device, args.num_beams)
+    val_generated_claims, _ = run_claim_generation(q2c_trainer, val_gen_dset, q2c_model, q2c_tokenizer,
+                                                             device, args.num_beams)
+    test_generated_claims, _ = run_claim_generation(q2c_trainer, test_gen_dset, q2c_model, q2c_tokenizer, device,
+                                                            args.num_beams)
 
-        with open(f"{save_dir}/output_test_claims.jsonl", 'wt') as f:
-            for c in test_generated_claims:
-                f.write(json.dumps(c) + '\n')
-        with open(f"{save_dir}/output_scifact_dev_claims.jsonl", 'wt') as f:
-            for c in val_generated_claims:
-                f.write(json.dumps(c) + '\n')
+    with open(f"{save_dir}/output_test_claims.jsonl", 'wt') as f:
+        for c in test_generated_claims:
+            f.write(json.dumps(c) + '\n')
+    with open(f"{save_dir}/output_scifact_dev_claims.jsonl", 'wt') as f:
+        for c in val_generated_claims:
+            f.write(json.dumps(c) + '\n')
 
-        q2c_model.to('cpu')
-        # Run FC model
-        fc_model.to(device)
-        #TODO get the data into the right format
-        fc_dev_set = SciFactParagraphBatchDataset(args.external_corpus_file, fc_claim_inputs,
-                                                  sep_token=fc_tokenizer.sep_token, k=0, train=False)
+    q2c_model.to('cpu')
+    # Run FC model
+    fc_model.to(device)
+    #TODO get the data into the right format
+    fc_dev_set = SciFactParagraphBatchDataset(args.external_corpus_file, fc_claim_inputs,
+                                              sep_token=fc_tokenizer.sep_token, k=0, train=False)
 
-        rationale_predictions, stance_preds, stance_scores = predict(fc_model, fc_dev_set, 16, args.fc_model_name, fc_tokenizer, device)
-        rationale_json = rationale2json(fc_dev_set.samples, rationale_predictions)
-        stance_json = stance2json(fc_dev_set.samples, stance_preds, stance_scores)
-        stance_json = post_process_stance(rationale_json, stance_json)
-        merged_json = merge_json(rationale_json, stance_json)
-        fc_model.to('cpu')
-        # Rank predictions
-        sorted_fc_claims = sort_fc_claims(merged_json, generated_claims)
-        # Get new entities
-        citance_entity_map = defaultdict(lambda: {'text': '', 'entities': []})
-        original_claims = [c for c in sorted_fc_claims if c['score'] > 0.5]
-        for c in original_claims:
-            citance_entity_map[c['id']]['text'] = c['citance']
-            citance_entity_map[c['id']]['entities'].append(
-                (c['answer']['start'], c['answer']['start'] + len(c['answer']['text']), 'ENTITY'))
-        ner_data.extend([Example.from_dict(nlp.make_doc(citance_entity_map[c]['text']),
-                                      {'entities': citance_entity_map[c]['entities']}) for c in citance_entity_map])
-        # Continue NER training starting from initial entity recognizer
-        nlp = retrain_ner_model(ner_data, spacy.load('en_core_sci_md'))
-        output_claims.extend(original_claims)
-        citances = [c for c in citances if c['doc_id'] not in citance_entity_map]
+    rationale_predictions, stance_preds, stance_scores = predict(fc_model, fc_dev_set, 16, args.fc_model_name, fc_tokenizer, device)
+    rationale_json = rationale2json(fc_dev_set.samples, rationale_predictions)
+    stance_json = stance2json(fc_dev_set.samples, stance_preds, stance_scores)
+    stance_json = post_process_stance(rationale_json, stance_json)
+    merged_json = merge_json(rationale_json, stance_json)
+    fc_model.to('cpu')
+    # Rank predictions
+    sorted_fc_claims = sort_fc_claims(merged_json, generated_claims)
+    # Get new entities
+    citance_entity_map = defaultdict(lambda: {'text': '', 'entities': []})
+    original_claims = [c for c in sorted_fc_claims if c['score'] > 0.5]
+    for c in original_claims:
+        citance_entity_map[c['id']]['text'] = c['citance']
+        citance_entity_map[c['id']]['entities'].append(
+            (c['answer']['start'], c['answer']['start'] + len(c['answer']['text']), 'ENTITY'))
+    output_claims.extend(original_claims)
+    citances = [c for c in citances if c['doc_id'] not in citance_entity_map]
 
 
-        if epoch == n_epochs - 1:
-            output_claims.extend([c for c in sorted_fc_claims if c['score'] <= 0.5])
+    output_claims.extend([c for c in sorted_fc_claims if c['score'] <= 0.5])
 
-        with open(f"{save_dir}/added_claims.jsonl", 'wt') as f:
-            for c in output_claims:
-                f.write(json.dumps(c) + '\n')
+    with open(f"{save_dir}/added_claims.jsonl", 'wt') as f:
+       for c in output_claims:
+           f.write(json.dumps(c) + '\n')
 
-        csv_out = []
-        for c in output_claims:
-            csv_out.append([c['context'], c['citance'], c['generated_claim'], c['score']])
-        csv_pd = pd.DataFrame(csv_out, columns=['Context', 'Original Sentence', 'Claim', 'Score'])
-        csv_pd.to_csv(f"{save_dir}/ranked_claims.csv", index=None)
+    csv_out = []
+    for c in output_claims:
+        csv_out.append([c['context'], c['citance'], c['generated_claim'], c['score']])
+    csv_pd = pd.DataFrame(csv_out, columns=['Context', 'Original Sentence', 'Claim', 'Score'])
+    csv_pd.to_csv(f"{save_dir}/ranked_claims.csv", index=None)
 
-        # Generate training data for fact checking
-        nli = pipeline('sentiment-analysis', model='roberta-large-mnli', return_all_scores=True, device=0)
+    # Generate training data for fact checking
+    nli = pipeline('sentiment-analysis', model='roberta-large-mnli', return_all_scores=True, device=0)
 
-        # Generate data for scifact training/evaluation
-        for claim_set in tqdm(test_generated_claims):
-            neg_claims = generate_negative_claims_using_linker([claim_set['generated_claim']], nli, lm, lm_tk, device, 3)
-            claim_set['neg_claim'] = neg_claims[0][2] if neg_claims[0] is not None else None
-        # Get corpus so we can pick negative samples for NEI
-        paper_id_to_paragraph = defaultdict(list)
-        with open(args.internal_corpus_file) as f:
-            for l in f:
-                data = json.loads(l)
-                paper_id = data['doc_id'].split('_')[0]
-                paper_id_to_paragraph[paper_id].append(data)
-
-
-        # Pick 1/3 to be supports, 1/3 to be contradicts, and 1/3 to be NEI
-        def incgen():
-            val = 0
-            while True:
-                val += 1
-                yield val
+    # Generate data for scifact training/evaluation
+    for claim_set in tqdm(test_generated_claims):
+        neg_claims = kbin([claim_set['generated_claim']], nli, lm, lm_tk, device, 3)
+        claim_set['neg_claim'] = neg_claims[0][2] if neg_claims[0] is not None else None
+    # Get corpus so we can pick negative samples for NEI
+    paper_id_to_paragraph = defaultdict(list)
+    with open(args.internal_corpus_file) as f:
+        for l in f:
+            data = json.loads(l)
+            paper_id = data['doc_id'].split('_')[0]
+            paper_id_to_paragraph[paper_id].append(data)
 
 
-        inc = incgen()
-        base_claims_and_evidence = []
-        for claim_set in test_generated_claims:
-            # Remove ID suffix to get original paper ID
-            original_doc_id = claim_set['id']
-            original_doc_id = original_doc_id[:original_doc_id.rfind('_')]
+    # Pick 1/3 to be supports, 1/3 to be contradicts, and 1/3 to be NEI
+    def incgen():
+        val = 0
+        while True:
+            val += 1
+            yield val
 
-            pos_claim = claim_set['generated_claim']
-            neg_claim = claim_set['neg_claim']
-            type = random.randint(0, 2)
-            if type == 0 or neg_claim == None:
+
+    inc = incgen()
+    base_claims_and_evidence = []
+    for claim_set in test_generated_claims:
+        # Remove ID suffix to get original paper ID
+        original_doc_id = claim_set['id']
+        original_doc_id = original_doc_id[:original_doc_id.rfind('_')]
+
+        pos_claim = claim_set['generated_claim']
+        neg_claim = claim_set['neg_claim']
+        type = random.randint(0, 2)
+        if type == 0 or neg_claim == None:
+            base_claims_and_evidence.append({
+                'id': next(inc),
+                'claim': pos_claim,
+                'evidence': {str(doc_id): [{'sentences': [0], 'label': 'SUPPORT'}] for doc_id in
+                             claim_set['evidence']},
+                'cited_doc_ids': claim_set['evidence']
+            })
+        elif type == 1:
+            base_claims_and_evidence.append({
+                'id': next(inc),
+                'claim': neg_claim,
+                'evidence': {str(doc_id): [{'sentences': [0], 'label': 'CONTRADICT'}] for doc_id in
+                             claim_set['evidence']},
+                'cited_doc_ids': claim_set['evidence']
+            })
+        elif type == 2:
+            nei_type = random.randint(0, 1)
+            if nei_type == 0:
                 base_claims_and_evidence.append({
                     'id': next(inc),
                     'claim': pos_claim,
-                    'evidence': {str(doc_id): [{'sentences': [0], 'label': 'SUPPORT'}] for doc_id in
-                                 claim_set['evidence']},
-                    'cited_doc_ids': claim_set['evidence']
+                    'evidence': {},
+                    'cited_doc_ids': [original_doc_id]
                 })
-            elif type == 1:
+            else:
                 base_claims_and_evidence.append({
                     'id': next(inc),
                     'claim': neg_claim,
-                    'evidence': {str(doc_id): [{'sentences': [0], 'label': 'CONTRADICT'}] for doc_id in
-                                 claim_set['evidence']},
-                    'cited_doc_ids': claim_set['evidence']
+                    'evidence': {},
+                    'cited_doc_ids': [original_doc_id]
                 })
-            elif type == 2:
-                nei_type = random.randint(0, 1)
-                if nei_type == 0:
-                    base_claims_and_evidence.append({
-                        'id': next(inc),
-                        'claim': pos_claim,
-                        'evidence': {},
-                        'cited_doc_ids': [original_doc_id]
-                    })
-                else:
-                    base_claims_and_evidence.append({
-                        'id': next(inc),
-                        'claim': neg_claim,
-                        'evidence': {},
-                        'cited_doc_ids': [original_doc_id]
-                    })
-        with open(f"{save_dir}/scifact_claims.jsonl", 'wt') as f:
-            for c in base_claims_and_evidence:
-                f.write(json.dumps(c) + '\n')
+    with open(f"{save_dir}/scifact_claims.jsonl", 'wt') as f:
+        for c in base_claims_and_evidence:
+            f.write(json.dumps(c) + '\n')

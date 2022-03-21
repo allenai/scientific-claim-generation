@@ -28,7 +28,7 @@ for cui in linker.kb.cui_to_entity:
 # Load relation types
 cui_to_rel = {}
 rel_to_cui = defaultdict(set)
-with open('/data/datasets/UMLS/MRCONSO.TXT') as f:
+with open('UMLS/MRCONSO.TXT') as f:
     for l in f:
         fields = l.strip().split('|')
         cui_to_rel[fields[0]] = fields[12]
@@ -36,14 +36,14 @@ with open('/data/datasets/UMLS/MRCONSO.TXT') as f:
 
 # Load concept vectors
 cui2vec = {}
-with open('/data/datasets/cui2vec/cui2vec_pretrained.csv') as f:
+with open('cui2vec/cui2vec_pretrained.csv') as f:
     next(f)
     for l in f:
         fields = l.strip().split(',')
         cui2vec[fields[0][1:-1]] = np.array(fields[1:], dtype=np.float32)
 
 
-def generate_negative_claims(
+def covidfact_negation(
         claims: List[AnyStr],
         fillmask: FillMaskPipeline,
         nli: TextClassificationPipeline,
@@ -130,7 +130,7 @@ def get_perplexity(
     return ppl
 
 
-def generate_negative_claims_using_linker(
+def kbin(
         claims: List[str],
         nli: TextClassificationPipeline,
         language_model: GPT2LMHeadModel,

@@ -28,4 +28,3 @@ dependencies:
     - tqdm==4.49.0
     - transformers==4.5.1
     - wandb==0.10.31
-    - yake==0.4.8

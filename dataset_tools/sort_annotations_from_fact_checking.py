@@ -1,4 +1,3 @@
-import krippendorff
 from sklearn.metrics import cohen_kappa_score
 import pandas as pd
 import argparse
